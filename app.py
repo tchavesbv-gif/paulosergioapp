@@ -3,15 +3,38 @@ from supabase import create_client, Client
 import pandas as pd
 from datetime import datetime
 
-# Configuração da página
+# Configuração da página otimizada para dispositivos móveis
 st.set_page_config(
-    page_title="Gestão de Demandas de Saúde",
+    page_title="Gestão de Saúde",
     page_icon="🩺",
-    layout="wide",
-    initial_sidebar_state="expanded"
+    layout="centered", # Layout centrado adapta-se muito melhor a telemóveis
+    initial_sidebar_state="collapsed"
 )
 
-# Inicialização Oficial do Supabase com tratamento do URL base
+# Estilos CSS personalizados para uma experiência mobile limpa e touch-friendly
+st.markdown("""
+    <style>
+        /* Aumentar áreas de toque e legibilidade em mobile */
+        .stButton button {
+            width: 100%;
+            border-radius: 8px;
+            height: 3em;
+            font-weight: bold;
+        }
+        .stSelectbox, .stTextInput, .stTextArea {
+            margin-bottom: 0.5rem;
+        }
+        /* Estética dos cartões de atendimento */
+        div.stExpander {
+            border-radius: 10px;
+            border: 1px solid #e0e0e0;
+            margin-bottom: 10px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.02);
+        }
+    </style>
+""", unsafe_allow_html=True)
+
+# Inicialização Oficial do Supabase
 @st.cache_resource
 def init_supabase() -> Client:
     url = st.secrets["SUPABASE_URL"].rstrip("/")
@@ -32,7 +55,6 @@ def carregar_demandas():
 
 def salvar_demandas(nome, telefone, cartao_sus, demanda, reportado):
     try:
-        # Define o status automaticamente: "Delegado" se reportado preenchido, senão "Em Aberto"
         status_inicial = "Delegado" if reportado and reportado.strip() != "" else "Em Aberto"
         
         dados = {
@@ -46,7 +68,7 @@ def salvar_demandas(nome, telefone, cartao_sus, demanda, reportado):
         response = supabase.table("pacientes_demandas").insert(dados).execute()
         return response
     except Exception as e:
-        raise Exception(f"Erro ao guardar na base de dados: {e}")
+        raise Exception(f"Erro ao guardar: {e}")
 
 def atualizar_status(demanda_id, novo_status):
     try:
@@ -56,115 +78,108 @@ def atualizar_status(demanda_id, novo_status):
             
         supabase.table("pacientes_demandas").update(atualizacao).eq("id", demanda_id).execute()
     except Exception as e:
-        st.error(f"Erro ao atualizar status: {e}")
+        st.error(f"Erro ao atualizar: {e}")
 
-# Interface Principal
-st.title("🩺 Gestão de Atendimentos - Secretaria de Saúde")
+# --- CABEÇALHO MOBILE-FRIENDLY ---
+st.markdown("### 🩺 Gestão de Atendimentos")
+st.caption("Secretaria de Saúde — Painel Mobile")
+
+# Carregar Dados Inicialmente para Métricas
+dados_demandas = carregar_demandas()
+df = pd.DataFrame(dados_demandas) if dados_demandas else pd.DataFrame()
+
+# --- MÉTRICAS (KPIs Compactos) ---
+if not df.empty:
+    total = len(df)
+    aberto = len(df[df["status"] == "Em Aberto"]) if "status" in df.columns else 0
+    delegado = len(df[df["status"] == "Delegado"]) if "status" in df.columns else 0
+    encerrado = len(df[df["status"] == "Encerrado"]) if "status" in df.columns else 0
+    
+    k1, k2, k3, k4 = st.columns(4)
+    k1.metric("Total", total)
+    k2.metric("Abertos", aberto)
+    k3.metric("Delegados", delegado)
+    k4.metric("Encerrados", encerrado)
+
 st.markdown("---")
 
-# Barra Lateral para Registo de Nova Demanda
-st.sidebar.header("📝 Novo Atendimento")
+# --- NOVO ATENDIMENTO (Expansor de Acesso Rápido no Topo) ---
+with st.expander("➕ Registar Novo Atendimento", expanded=False):
+    with st.form("form_demanda_mobile", clear_on_submit=True):
+        nome = st.text_input("Nome do Paciente *")
+        telefone = st.text_input("Telemóvel / WhatsApp")
+        cartao_sus = st.text_input("Cartão SUS")
+        demanda = st.text_area("Descrição do Caso / Demanda *")
+        reportado = st.text_input("Reportado por / Origem (Deixe vazio para 'Em Aberto')")
+        
+        submitted = st.form_submit_button("Guardar Atendimento", use_container_width=True)
+        
+        if submitted:
+            if nome and demanda:
+                try:
+                    salvar_demandas(nome, telefone, cartao_sus, demanda, reportado)
+                    st.success("Registado com sucesso!")
+                    st.rerun()
+                except Exception as ex:
+                    st.error(f"{ex}")
+            else:
+                st.error("Preencha o Nome e a Descrição.")
 
-with st.sidebar.form("form_demanda", clear_on_submit=True):
-    nome = st.text_input("Nome do Paciente *")
-    telefone = st.text_input("Telefone / WhatsApp (ex: 912345678)")
-    cartao_sus = st.text_input("Cartão SUS")
-    demanda = st.text_area("Descrição da Demanda / Caso *")
-    reportado = st.text_input("Reportado por / Origem (Se preenchido, status vira 'Delegado')")
-    
-    submitted = st.form_submit_button("Registar Demanda", use_container_width=True)
-    
-    if submitted:
-        if nome and demanda:
-            try:
-                salvar_demandas(nome, telefone, cartao_sus, demanda, reportado)
-                st.sidebar.success("Demanda registada com sucesso!")
+# --- FILTROS E PESQUISA ---
+if not df.empty:
+    col_f1, col_f2 = st.columns(2)
+    with col_f1:
+        filtro_status = st.selectbox("Status", ["Todos", "Em Aberto", "Delegado", "Encerrado"], label_visibility="collapsed")
+    with col_f2:
+        busca = st.text_input("Pesquisar", placeholder="Nome ou SUS...", label_visibility="collapsed")
+        
+    df_filtrado = df.copy()
+    if filtro_status != "Todos" and "status" in df_filtrado.columns:
+        df_filtrado = df_filtrado[df_filtrado["status"] == filtro_status]
+        
+    if busca and "nome" in df_filtrado.columns:
+        df_filtrado = df_filtrado[
+            df_filtrado["nome"].str.contains(busca, case=False, na=False) | 
+            df_filtrado["cartao_sus"].str.contains(busca, case=False, na=False)
+        ]
+
+    st.markdown(f"**Atendimentos ({len(df_filtrado)})**")
+
+    # --- LISTA DE CARTÕES ---
+    for index, row in df_filtrado.iterrows():
+        status_atual = row.get('status', 'Em Aberto')
+        
+        # Cores para os emojis de status
+        emoji = "🟡" if status_atual == "Em Aberto" else ("🔵" if status_atual == "Delegado" else "🟢")
+        
+        with st.expander(f"{emoji} {row.get('nome', 'Sem Nome')} ({status_atual})"):
+            st.markdown(f"**📱 Tel:** {row.get('telefone', 'Não inf.')}")
+            st.markdown(f"**🆔 SUS:** {row.get('cartao_sus', 'Não inf.')}")
+            st.markdown(f"**📝 Demanda:** {row.get('demanda', 'N/A')}")
+            st.markdown(f"**👤 Origem:** {row.get('reportado', 'N/A')}")
+            
+            # Atalho rápido para WhatsApp se houver telefone
+            tel = row.get('telefone')
+            if tel:
+                tel_limpo = "".join(filter(str.isdigit, str(tel)))
+                st.markdown(f"[💬 Abrir no WhatsApp](https://wa.me/55{tel_limpo})", unsafe_allow_html=True)
+            
+            st.markdown("---")
+            
+            # Atualização de Status Otimizada para Mobile
+            opcoes = ["Em Aberto", "Delegado", "Encerrado"]
+            idx = opcoes.index(status_atual) if status_atual in opcoes else 0
+            
+            novo_estado = st.selectbox(
+                "Mudar Status", 
+                opcoes, 
+                index=idx,
+                key=f"st_{row.get('id', index)}"
+            )
+            
+            if novo_estado != status_atual:
+                atualizar_status(row['id'], novo_estado)
+                st.success("Atualizado!")
                 st.rerun()
-            except Exception as ex:
-                st.sidebar.error(f"{ex}")
-        else:
-            st.sidebar.error("Preencha os campos obrigatórios (Nome e Demanda).")
-
-# Carregar Dados e Apresentar no Painel
-try:
-    dados_demandas = carregar_demandas()
-    
-    if not dados_demandas:
-        st.info("Ainda não existem demandas registadas. Utilize o menu lateral para criar o primeiro atendimento.")
-    else:
-        df = pd.DataFrame(dados_demandas)
-        
-        # --- Secção de Métricas (KPIs) ---
-        total_atendimentos = len(df)
-        em_aberto = len(df[df["status"] == "Em Aberto"]) if "status" in df.columns else 0
-        delegados = len(df[df["status"] == "Delegado"]) if "status" in df.columns else 0
-        encerrados = len(df[df["status"] == "Encerrado"]) if "status" in df.columns else 0
-        
-        kpi1, kpi2, kpi3, kpi4 = st.columns(4)
-        kpi1.metric("Total de Atendimentos", total_atendimentos)
-        kpi2.metric("Em Aberto", em_aberto)
-        kpi3.metric("Delegados", delegados)
-        kpi4.metric("Encerrados", encerrados)
-        
-        st.markdown("---")
-        
-        # --- Filtros e Controlo ---
-        st.subheader("🔍 Filtros e Pesquisa")
-        col_f1, col_f2 = st.columns(2)
-        
-        with col_f1:
-            filtro_status = st.selectbox("Filtrar por Status", ["Todos", "Em Aberto", "Delegado", "Encerrado"])
-        
-        with col_f2:
-            busca_nome = st.text_input("Pesquisar por Nome ou Cartão SUS", placeholder="Digite o nome ou cartão...")
-            
-        df_filtrado = df.copy()
-        if filtro_status != "Todos" and "status" in df_filtrado.columns:
-            df_filtrado = df_filtrado[df_filtrado["status"] == filtro_status]
-            
-        if busca_nome and "nome" in df_filtrado.columns:
-            df_filtrado = df_filtrado[
-                df_filtrado["nome"].str.contains(busca_nome, case=False, na=False) | 
-                df_filtrado["cartao_sus"].str.contains(busca_nome, case=False, na=False)
-            ]
-
-        st.markdown("---")
-        st.subheader(f"📋 Lista de Atendimentos ({len(df_filtrado)})")
-        
-        for index, row in df_filtrado.iterrows():
-            status_atual = row.get('status', 'Em Aberto')
-            
-            emoji_status = "🟡" if status_atual == "Em Aberto" else ("🔵" if status_atual == "Delegado" else "🟢")
-            
-            with st.expander(f"{emoji_status} **{row.get('nome', 'Sem Nome')}** — Status: **{status_atual}**"):
-                col1, col2 = st.columns([2, 1])
-                
-                with col1:
-                    st.markdown(f"**📞 Telefone:** {row.get('telefone', 'Não informado')}")
-                    st.markdown(f"**🆔 Cartão SUS:** {row.get('cartao_sus', 'Não informado')}")
-                    st.markdown(f"**📝 Demanda:** {row.get('demanda', 'N/A')}")
-                    st.markdown(f"**👤 Reportado por / Origem:** {row.get('reportado', 'N/A')}")
-                    
-                    tel = row.get('telefone')
-                    if tel:
-                        tel_limpo = "".join(filter(str.isdigit, str(tel)))
-                        st.markdown(f"[💬 Enviar Mensagem WhatsApp](https://wa.me/55{tel_limpo})", unsafe_allow_html=True)
-
-                with col2:
-                    opcoes_status = ["Em Aberto", "Delegado", "Encerrado"]
-                    idx_atual = opcoes_status.index(status_atual) if status_atual in opcoes_status else 0
-                    
-                    novo_estado = st.selectbox(
-                        "Atualizar Status", 
-                        opcoes_status, 
-                        index=idx_atual,
-                        key=f"status_{row.get('id', index)}"
-                    )
-                    
-                    if novo_estado != status_atual:
-                        atualizar_status(row['id'], novo_estado)
-                        st.success("Estado atualizado com sucesso!")
-                        st.rerun()
-
-except Exception as e:
-    st.error(f"Erro ao carregar os dados: {e}")
+else:
+    st.info("Ainda não existem demandas registadas. Utilize o botão acima para começar.")
