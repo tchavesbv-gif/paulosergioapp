@@ -20,10 +20,9 @@ def init_supabase() -> Client:
 
 supabase = init_supabase()
 
-# Funções CRUD
+# Funções CRUD com esquema public explícito
 def carregar_demandas():
-    # Chamada direta à tabela no esquema predefinido
-    response = supabase.table("pacientes_demandas").select("*").order("id", desc=True).execute()
+    response = supabase.schema("public").table("pacientes_demandas").select("*").order("id", desc=True).execute()
     return response.data
 
 def salvar_demandas(nome, telefone, cartao_sus, demanda, reportado, data_limite):
@@ -36,13 +35,13 @@ def salvar_demandas(nome, telefone, cartao_sus, demanda, reportado, data_limite)
         "status": "Em Andamento",
         "data_limite": str(data_limite) if data_limite else None
     }
-    supabase.table("pacientes_demandas").insert(dados).execute()
+    supabase.schema("public").table("pacientes_demandas").insert(dados).execute()
 
 def atualizar_status(demanda_id, novo_status):
     atualizacao = {"status": novo_status}
     if novo_status == "Resolvido":
         atualizacao["data_resolucao"] = datetime.now().isoformat()
-    supabase.table("pacientes_demandas").update(atualizacao).eq("id", demanda_id).execute()
+    supabase.schema("public").table("pacientes_demandas").update(atualizacao).eq("id", demanda_id).execute()
 
 # Interface Principal
 st.title("🩺 Gestão de Atendimentos - Secretaria de Saúde")
