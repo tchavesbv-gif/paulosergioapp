@@ -15,11 +15,14 @@ st.set_page_config(
 SUPABASE_URL = st.secrets["SUPABASE_URL"].rstrip("/")
 SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
 
+# Cabeçalhos com perfil de esquema explícito para evitar erros do PostgREST
 HEADERS = {
     "apikey": SUPABASE_KEY,
     "Authorization": f"Bearer {SUPABASE_KEY}",
     "Content-Type": "application/json",
-    "Prefer": "return=representation"
+    "Prefer": "return=representation",
+    "Accept-Profile": "public",
+    "Content-Profile": "public"
 }
 
 # Funções CRUD diretas via REST API
