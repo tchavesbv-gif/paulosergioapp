@@ -11,16 +11,18 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Inicialização Oficial do Supabase
+# Inicialização Oficial do Supabase com tratamento do URL base
 @st.cache_resource
 def init_supabase() -> Client:
     url = st.secrets["SUPABASE_URL"].rstrip("/")
+    if url.endswith("/rest/v1"):
+        url = url[:-8]
     key = st.secrets["SUPABASE_KEY"]
     return create_client(url, key)
 
 supabase = init_supabase()
 
-# Funções CRUD utilizando diretamente a tabela do Supabase
+# Funções CRUD
 def carregar_demandas():
     try:
         response = supabase.table("pacientes_demandas").select("*").order("id", desc=True).execute()
@@ -30,7 +32,7 @@ def carregar_demandas():
 
 def salvar_demandas(nome, telefone, cartao_sus, demanda, reportado):
     try:
-        # Define o status automaticamente com base no campo 'reportado'
+        # Define o status automaticamente: "Delegado" se reportado preenchido, senão "Em Aberto"
         status_inicial = "Delegado" if reportado and reportado.strip() != "" else "Em Aberto"
         
         dados = {
@@ -79,7 +81,7 @@ with st.sidebar.form("form_demanda", clear_on_submit=True):
                 st.sidebar.success("Demanda registada com sucesso!")
                 st.rerun()
             except Exception as ex:
-                st.sidebar.error(f"Erro ao guardar: {ex}")
+                st.sidebar.error(f"{ex}")
         else:
             st.sidebar.error("Preencha os campos obrigatórios (Nome e Demanda).")
 
