@@ -19,14 +19,15 @@ HEADERS = {
     "apikey": SUPABASE_KEY,
     "Authorization": f"Bearer {SUPABASE_KEY}",
     "Content-Type": "application/json",
-    "Prefer": "return=representation"
+    "Prefer": "return=representation",
+    "Accept-Profile": "public",
+    "Content-Profile": "public"
 }
 
-# Funções CRUD diretas via REST API ajustadas para o PostgREST
+# Funções CRUD com rotas qualificadas (public.pacientes_demandas)
 def carregar_demandas():
     try:
-        # URL estruturada diretamente para o recurso exposto
-        url = f"{SUPABASE_URL}/rest/v1/pacientes_demandas?select=*&order=id.desc"
+        url = f"{SUPABASE_URL}/rest/v1/public.pacientes_demandas?select=*&order=id.desc"
         response = requests.get(url, headers=HEADERS, timeout=10)
         if response.status_code == 200:
             return response.json()
@@ -35,7 +36,7 @@ def carregar_demandas():
         return []
 
 def salvar_demandas(nome, telefone, cartao_sus, demanda, reportado, data_limite):
-    url = f"{SUPABASE_URL}/rest/v1/pacientes_demandas"
+    url = f"{SUPABASE_URL}/rest/v1/public.pacientes_demandas"
     dados = {
         "nome": nome,
         "telefone": telefone,
@@ -50,7 +51,7 @@ def salvar_demandas(nome, telefone, cartao_sus, demanda, reportado, data_limite)
         raise Exception(f"Erro na API Supabase ({response.status_code}): {response.text}")
 
 def atualizar_status(demanda_id, novo_status):
-    url = f"{SUPABASE_URL}/rest/v1/pacientes_demandas?id=eq.{demanda_id}"
+    url = f"{SUPABASE_URL}/rest/v1/public.pacientes_demandas?id=eq.{demanda_id}"
     atualizacao = {"status": novo_status}
     if novo_status == "Resolvido":
         atualizacao["data_resolucao"] = datetime.now().isoformat()
