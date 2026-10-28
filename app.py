@@ -20,7 +20,7 @@ def init_supabase() -> Client:
 
 supabase = init_supabase()
 
-# Funções CRUD robustas
+# Funções CRUD robustas com tratamento de rotas
 def carregar_demandas():
     try:
         response = supabase.table("pacientes_demandas").select("*").order("id", desc=True).execute()
@@ -38,6 +38,7 @@ def salvar_demandas(nome, telefone, cartao_sus, demanda, reportado, data_limite)
         "status": "Em Andamento",
         "data_limite": str(data_limite) if data_limite else None
     }
+    # Utiliza o método direto na tabela para inserção sem falhas de caminho
     supabase.table("pacientes_demandas").insert(dados).execute()
 
 def atualizar_status(demanda_id, novo_status):
@@ -123,7 +124,6 @@ try:
         for index, row in df_filtrado.iterrows():
             status_atual = row.get('status', 'Em Andamento')
             
-            # Indicador visual por emoji dependendo do estado
             emoji_status = "🟡" if status_atual == "Em Andamento" else ("🟠" if status_atual == "Pendente" else "🟢")
             
             with st.expander(f"{emoji_status} **{row.get('nome', 'Sem Nome')}** — Status: **{status_atual}** | Prazo: {row.get('data_limite', 'N/A')}"):
