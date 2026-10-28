@@ -1,7 +1,7 @@
 import streamlit as st
 import requests
 import pandas as pd
-from datetime import datetime, date
+from datetime import datetime
 
 # Configuração da página
 st.set_page_config(
@@ -19,44 +19,41 @@ HEADERS = {
     "apikey": SUPABASE_KEY,
     "Authorization": f"Bearer {SUPABASE_KEY}",
     "Content-Type": "application/json",
-    "Prefer": "return=representation",
-    "Accept-Profile": "public",
-    "Content-Profile": "public"
+    "Prefer": "return=representation"
 }
 
-# Funções CRUD diretas via REST API
+# Funções CRUD otimizadas via RPC (PostgreSQL Stored Procedures)
 def carregar_demandas():
     try:
-        url = f"{SUPABASE_URL}/rest/v1/pacientes_demandas?select=*&order=id.desc"
-        response = requests.get(url, headers=HEADERS, timeout=10)
+        url = f"{SUPABASE_URL}/rest/v1/rpc/api_listar_demandas"
+        response = requests.post(url, headers=HEADERS, json={}, timeout=10)
         if response.status_code == 200:
             return response.json()
         return []
     except Exception:
         return []
 
-def salvar_demandas(nome, telefone, cartao_sus, demanda, reportado, data_limite):
-    url = f"{SUPABASE_URL}/rest/v1/pacientes_demandas"
-    dados = {
-        "nome": nome,
-        "telefone": telefone,
-        "cartao_sus": cartao_sus,
-        "demanda": demanda,
-        "reportado": reportado,
-        "status": "Em Andamento",
-        "data_limite": str(data_limite) if data_limite else None
+def salvar_demandas(nome, telefone, cartao_sus, demanda, reportado):
+    url = f"{SUPABASE_URL}/rest/v1/rpc/api_inserir_demanda"
+    payload = {
+        "p_nome": nome,
+        "p_telefone": telefone,
+        "p_cartao_sus": cartao_sus,
+        "p_demanda": demanda,
+        "p_reportado": reportado
     }
-    response = requests.post(url, headers=HEADERS, json=dados, timeout=10)
-    if response.status_code not in [200, 201]:
+    response = requests.post(url, headers=HEADERS, json=payload, timeout=10)
+    if response.status_code not in [200, 201, 204]:
         raise Exception(f"Erro na API Supabase ({response.status_code}): {response.text}")
 
 def atualizar_status(demanda_id, novo_status):
-    url = f"{SUPABASE_URL}/rest/v1/pacientes_demandas?id=eq.{demanda_id}"
-    atualizacao = {"status": novo_status}
-    if novo_status == "Resolvido":
-        atualizacao["data_resolucao"] = datetime.now().isoformat()
-    response = requests.patch(url, headers=HEADERS, json=atualizacao, timeout=10)
-    if response.status_code not in [200, 204]:
+    url = f"{SUPABASE_URL}/rest/v1/rpc/api_atualizar_status"
+    payload = {
+        "p_id": int(demanda_id),
+        "p_status": novo_status
+    }
+    response = requests.post(url, headers=HEADERS, json=payload, timeout=10)
+    if response.status_code not in [200, 201, 204]:
         raise Exception(f"Erro ao atualizar: {response.text}")
 
 # Interface Principal
@@ -71,15 +68,14 @@ with st.sidebar.form("form_demanda", clear_on_submit=True):
     telefone = st.text_input("Telefone / WhatsApp (ex: 912345678)")
     cartao_sus = st.text_input("Cartão SUS")
     demanda = st.text_area("Descrição da Demanda / Caso *")
-    reportado = st.text_input("Reportado por / Origem")
-    data_limite = st.date_input("Data Limite / Prazo", value=date.today())
+    reportado = st.text_input("Reportado por / Origem (Define status 'Delegado' se preenchido)")
     
     submitted = st.form_submit_button("Registar Demanda", use_container_width=True)
     
     if submitted:
         if nome and demanda:
             try:
-                salvar_demandas(nome, telefone, cartao_sus, demanda, reportado, data_limite)
+                salvar_demandas(nome, telefone, cartao_sus, demanda, reportado)
                 st.sidebar.success("Demanda registada com sucesso!")
                 st.rerun()
             except Exception as ex:
@@ -98,15 +94,15 @@ try:
         
         # --- Secção de Métricas (KPIs) ---
         total_atendimentos = len(df)
-        em_andamento = len(df[df["status"] == "Em Andamento"]) if "status" in df.columns else 0
-        pendentes = len(df[df["status"] == "Pendente"]) if "status" in df.columns else 0
-        resolvidos = len(df[df["status"] == "Resolvido"]) if "status" in df.columns else 0
+        em_aberto = len(df[df["status"] == "Em Aberto"]) if "status" in df.columns else 0
+        delegados = len(df[df["status"] == "Delegado"]) if "status" in df.columns else 0
+        encerrados = len(df[df["status"] == "Encerrado"]) if "status" in df.columns else 0
         
         kpi1, kpi2, kpi3, kpi4 = st.columns(4)
         kpi1.metric("Total de Atendimentos", total_atendimentos)
-        kpi2.metric("Em Andamento", em_andamento)
-        kpi3.metric("Pendentes", pendentes)
-        kpi4.metric("Resolvidos", resolvidos)
+        kpi2.metric("Em Aberto", em_aberto)
+        kpi3.metric("Delegados", delegados)
+        kpi4.metric("Encerrados", encerrados)
         
         st.markdown("---")
         
@@ -115,7 +111,7 @@ try:
         col_f1, col_f2 = st.columns(2)
         
         with col_f1:
-            filtro_status = st.selectbox("Filtrar por Status", ["Todos", "Em Andamento", "Pendente", "Resolvido"])
+            filtro_status = st.selectbox("Filtrar por Status", ["Todos", "Em Aberto", "Delegado", "Encerrado"])
         
         with col_f2:
             busca_nome = st.text_input("Pesquisar por Nome ou Cartão SUS", placeholder="Digite o nome ou cartão...")
@@ -134,18 +130,18 @@ try:
         st.subheader(f"📋 Lista de Atendimentos ({len(df_filtrado)})")
         
         for index, row in df_filtrado.iterrows():
-            status_atual = row.get('status', 'Em Andamento')
+            status_atual = row.get('status', 'Em Aberto')
             
-            emoji_status = "🟡" if status_atual == "Em Andamento" else ("🟠" if status_atual == "Pendente" else "🟢")
+            emoji_status = "🟡" if status_atual == "Em Aberto" else ("🔵" if status_atual == "Delegado" else "🟢")
             
-            with st.expander(f"{emoji_status} **{row.get('nome', 'Sem Nome')}** — Status: **{status_atual}** | Prazo: {row.get('data_limite', 'N/A')}"):
+            with st.expander(f"{emoji_status} **{row.get('nome', 'Sem Nome')}** — Status: **{status_atual}**"):
                 col1, col2 = st.columns([2, 1])
                 
                 with col1:
                     st.markdown(f"**📞 Telefone:** {row.get('telefone', 'Não informado')}")
                     st.markdown(f"**🆔 Cartão SUS:** {row.get('cartao_sus', 'Não informado')}")
                     st.markdown(f"**📝 Demanda:** {row.get('demanda', 'N/A')}")
-                    st.markdown(f"**👤 Reportado por:** {row.get('reportado', 'N/A')}")
+                    st.markdown(f"**👤 Reportado por / Origem:** {row.get('reportado', 'N/A')}")
                     
                     tel = row.get('telefone')
                     if tel:
@@ -153,7 +149,7 @@ try:
                         st.markdown(f"[💬 Enviar Mensagem WhatsApp](https://wa.me/55{tel_limpo})", unsafe_allow_html=True)
 
                 with col2:
-                    opcoes_status = ["Em Andamento", "Pendente", "Resolvido"]
+                    opcoes_status = ["Em Aberto", "Delegado", "Encerrado"]
                     idx_atual = opcoes_status.index(status_atual) if status_atual in opcoes_status else 0
                     
                     novo_estado = st.selectbox(
