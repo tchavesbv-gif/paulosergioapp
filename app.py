@@ -1,7 +1,6 @@
 import streamlit as st
-import requests
+from supabase import create_client, Client
 import pandas as pd
-from datetime import datetime
 
 # Configuração da página
 st.set_page_config(
@@ -11,30 +10,25 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Configuração da API REST do Supabase
-SUPABASE_URL = st.secrets["SUPABASE_URL"].rstrip("/")
-SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
+# Inicialização do Cliente Oficial do Supabase
+@st.cache_resource
+def init_supabase() -> Client:
+    url = st.secrets["SUPABASE_URL"]
+    key = st.secrets["SUPABASE_KEY"]
+    return create_client(url, key)
 
-HEADERS = {
-    "apikey": SUPABASE_KEY,
-    "Authorization": f"Bearer {SUPABASE_KEY}",
-    "Content-Type": "application/json",
-    "Prefer": "return=representation"
-}
+supabase = init_supabase()
 
-# Funções CRUD otimizadas via RPC (PostgreSQL Stored Procedures)
+# Funções CRUD utilizando o método oficial .rpc() do Supabase
 def carregar_demandas():
     try:
-        url = f"{SUPABASE_URL}/rest/v1/rpc/api_listar_demandas"
-        response = requests.post(url, headers=HEADERS, json={}, timeout=10)
-        if response.status_code == 200:
-            return response.json()
-        return []
-    except Exception:
+        response = supabase.rpc("api_listar_demandas").execute()
+        return response.data if response.data else []
+    except Exception as e:
+        st.error(f"Erro ao carregar dados: {e}")
         return []
 
 def salvar_demandas(nome, telefone, cartao_sus, demanda, reportado):
-    url = f"{SUPABASE_URL}/rest/v1/rpc/api_inserir_demanda"
     payload = {
         "p_nome": nome,
         "p_telefone": telefone,
@@ -42,19 +36,15 @@ def salvar_demandas(nome, telefone, cartao_sus, demanda, reportado):
         "p_demanda": demanda,
         "p_reportado": reportado
     }
-    response = requests.post(url, headers=HEADERS, json=payload, timeout=10)
-    if response.status_code not in [200, 201, 204]:
-        raise Exception(f"Erro na API Supabase ({response.status_code}): {response.text}")
+    response = supabase.rpc("api_inserir_demanda", payload).execute()
+    return response
 
 def atualizar_status(demanda_id, novo_status):
-    url = f"{SUPABASE_URL}/rest/v1/rpc/api_atualizar_status"
     payload = {
         "p_id": int(demanda_id),
         "p_status": novo_status
     }
-    response = requests.post(url, headers=HEADERS, json=payload, timeout=10)
-    if response.status_code not in [200, 201, 204]:
-        raise Exception(f"Erro ao atualizar: {response.text}")
+    supabase.rpc("api_atualizar_status", payload).execute()
 
 # Interface Principal
 st.title("🩺 Gestão de Atendimentos - Secretaria de Saúde")
@@ -68,7 +58,7 @@ with st.sidebar.form("form_demanda", clear_on_submit=True):
     telefone = st.text_input("Telefone / WhatsApp (ex: 912345678)")
     cartao_sus = st.text_input("Cartão SUS")
     demanda = st.text_area("Descrição da Demanda / Caso *")
-    reportado = st.text_input("Reportado por / Origem (Define status 'Delegado' se preenchido)")
+    reportado = st.text_input("Reportado por / Origem (Se preenchido, status vira 'Delegado')")
     
     submitted = st.form_submit_button("Registar Demanda", use_container_width=True)
     
