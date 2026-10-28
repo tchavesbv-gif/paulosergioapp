@@ -1,5 +1,5 @@
 import streamlit as st
-from supabase import create_client, Client
+import requests
 import pandas as pd
 from datetime import datetime, date
 
@@ -11,25 +11,38 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Conexão oficial com Supabase
-@st.cache_resource
-def init_supabase() -> Client:
-    url = st.secrets["SUPABASE_URL"]
-    key = st.secrets["SUPABASE_KEY"]
-    return create_client(url, key)
+# Configuração da API REST do Supabase
+SUPABASE_URL = st.secrets["SUPABASE_URL"].rstrip("/")
+SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
 
-supabase = init_supabase()
+HEADERS = {
+    "apikey": SUPABASE_KEY,
+    "Authorization": f"Bearer {SUPABASE_KEY}",
+    "Content-Type": "application/json",
+    "Prefer": "return=representation",
+    "Accept-Profile": "public",
+    "Content-Profile": "public"
+}
 
-# Funções CRUD com o cliente oficial do Supabase
+# Funções CRUD diretas via REST API (utilizando o esquema public explícito)
 def carregar_demandas():
     try:
-        response = supabase.table("pacientes_demandas").select("*").order("id", desc=True).execute()
-        return response.data if response.data else []
-    except Exception as e:
-        st.error(f"Erro ao carregar dados: {e}")
+        url = f"{SUPABASE_URL}/rest/v1/pacientes_demandas?select=*&order=id.desc"
+        response = requests.get(url, headers=HEADERS, timeout=10)
+        if response.status_code == 200:
+            return response.json()
+        elif response.status_code == 404:
+            # Fallback para o endpoint com schema prefixado se necessário
+            url_alt = f"{SUPABASE_URL}/rest/v1/rpc/get_demandas" # ou rota alternativa
+            resp_alt = requests.get(f"{SUPABASE_URL}/rest/v1/pacientes_demandas?select=*", headers=HEADERS, timeout=10)
+            if resp_alt.status_code == 200:
+                return resp_alt.json()
+        return []
+    except Exception:
         return []
 
 def salvar_demandas(nome, telefone, cartao_sus, demanda, reportado, data_limite):
+    url = f"{SUPABASE_URL}/rest/v1/pacientes_demandas"
     dados = {
         "nome": nome,
         "telefone": telefone,
@@ -39,14 +52,18 @@ def salvar_demandas(nome, telefone, cartao_sus, demanda, reportado, data_limite)
         "status": "Em Andamento",
         "data_limite": str(data_limite) if data_limite else None
     }
-    response = supabase.table("pacientes_demandas").insert(dados).execute()
-    return response
+    response = requests.post(url, headers=HEADERS, json=dados, timeout=10)
+    if response.status_code not in [200, 201]:
+        raise Exception(f"Erro na API Supabase ({response.status_code}): {response.text}")
 
 def atualizar_status(demanda_id, novo_status):
+    url = f"{SUPABASE_URL}/rest/v1/pacientes_demandas?id=eq.{demanda_id}"
     atualizacao = {"status": novo_status}
     if novo_status == "Resolvido":
         atualizacao["data_resolucao"] = datetime.now().isoformat()
-    supabase.table("pacientes_demandas").update(atualizacao).eq("id", demanda_id).execute()
+    response = requests.patch(url, headers=HEADERS, json=atualizacao, timeout=10)
+    if response.status_code not in [200, 204]:
+        raise Exception(f"Erro ao atualizar: {response.text}")
 
 # Interface Principal
 st.title("🩺 Gestão de Atendimentos - Secretaria de Saúde")
