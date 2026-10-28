@@ -15,19 +15,17 @@ st.set_page_config(
 SUPABASE_URL = st.secrets["SUPABASE_URL"].rstrip("/")
 SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
 
-# Cabeçalhos com perfil de esquema explícito para evitar erros do PostgREST
 HEADERS = {
     "apikey": SUPABASE_KEY,
     "Authorization": f"Bearer {SUPABASE_KEY}",
     "Content-Type": "application/json",
-    "Prefer": "return=representation",
-    "Accept-Profile": "public",
-    "Content-Profile": "public"
+    "Prefer": "return=representation"
 }
 
-# Funções CRUD diretas via REST API
+# Funções CRUD diretas via REST API ajustadas para o PostgREST
 def carregar_demandas():
     try:
+        # URL estruturada diretamente para o recurso exposto
         url = f"{SUPABASE_URL}/rest/v1/pacientes_demandas?select=*&order=id.desc"
         response = requests.get(url, headers=HEADERS, timeout=10)
         if response.status_code == 200:
@@ -49,7 +47,7 @@ def salvar_demandas(nome, telefone, cartao_sus, demanda, reportado, data_limite)
     }
     response = requests.post(url, headers=HEADERS, json=dados, timeout=10)
     if response.status_code not in [200, 201]:
-        raise Exception(f"Erro na API Supabase: {response.text}")
+        raise Exception(f"Erro na API Supabase ({response.status_code}): {response.text}")
 
 def atualizar_status(demanda_id, novo_status):
     url = f"{SUPABASE_URL}/rest/v1/pacientes_demandas?id=eq.{demanda_id}"
