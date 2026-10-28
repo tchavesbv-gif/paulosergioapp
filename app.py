@@ -22,116 +22,115 @@ supabase = init_supabase()
 
 # Funções CRUD
 def carregar_demandas():
-    response = supabase.table("pacientes_demandas").select("*").order("created_at", desc=True).execute()
+    # Utiliza o campo 'id' para ordenação decrescente de forma segura
+    response = supabase.table("pacientes_demandas").select("*").order("id", desc=True).execute()
     return response.data
 
-def salvar_demanda(nome, telefone, cartao_sus, demanda, reportado, data_limite):
+def salvar_demandas(nome, telefone, cartao_sus, demanda, reportado, data_limite):
     dados = {
         "nome": nome,
         "telefone": telefone,
         "cartao_sus": cartao_sus,
         "demanda": demanda,
         "reportado": reportado,
-        "data_limite": str(data_limite) if data_limite else None,
-        "status": "Em Andamento"
+        "status": "Em Andamento",
+        "data_limite": str(data_limite) if data_limite else None
     }
     supabase.table("pacientes_demandas").insert(dados).execute()
 
-def atualizar_status(id_demanda, novo_status):
-    dados = {"status": novo_status}
+def atualizar_status(demanda_id, novo_status):
+    atualizacao = {"status": novo_status}
     if novo_status == "Resolvido":
-        dados["data_resolucao"] = datetime.now().isoformat()
-    else:
-        dados["data_resolucao"] = None
-    supabase.table("pacientes_demandas").update(dados).eq("id", id_demanda).execute()
+        atualizacao["data_resolucao"] = datetime.now().isoformat()
+    supabase.table("pacientes_demandas").update(atualizacao).eq("id", demanda_id).execute()
 
-def deletar_demanda(id_demanda):
-    supabase.table("pacientes_demandas").delete().eq("id", id_demanda).execute()
-
-# --- INTERFACE ---
+# Interface Principal
 st.title("🩺 Gestão de Atendimentos - Secretaria de Saúde")
+st.markdown("---")
 
-# Barra Lateral - Formulário de Cadastro
-with st.sidebar:
-    st.header("➕ Cadastrar Nova Demanda")
-    with st.form("form_novo_paciente", clear_on_submit=True):
-        nome = st.text_input("Nome do Paciente *")
-        telefone = st.text_input("Telefone (WhatsApp)")
-        cartao_sus = st.text_input("Cartão Nacional SUS")
-        demanda = st.text_area("Demanda / Caso *")
-        reportado = st.text_input("Reportado a (Pessoa/Setor Responsável)")
-        data_limite = st.date_input("Data Limite / Lembrete", value=date.today())
-        
-        submitted = st.form_submit_button("Cadastrar Demanda")
-        if submitted:
-            if nome and demanda:
-                salvar_demanda(nome, telefone, cartao_sus, demanda, reportado, data_limite)
-                st.success("Demanda cadastrada com sucesso!")
-                st.rerun()
-            else:
-                st.error("Preencha o Nome e a Demanda!")
+# Barra Lateral para Registo de Nova Demanda
+st.sidebar.header("Novo Atendimento")
 
-# Conteúdo Principal
-dados = carregar_demandas()
-
-if not dados:
-    st.info("Nenhuma demanda cadastrada até o momento.")
-else:
-    df = pd.DataFrame(dados)
+with st.sidebar.form("form_demanda", clear_on_submit=True):
+    nome = st.text_input("Nome do Paciente *")
+    telefone = st.text_input("Telefone / WhatsApp (ex: 912345678)")
+    cartao_sus = st.text_input("Cartão SUS")
+    demanda = st.text_area("Descrição da Demanda / Caso *")
+    reportado = st.text_input("Reportado por / Origem")
+    data_limite = st.date_input("Data Limite / Prazo", value=date.today())
     
-    # Filtros
-    col_f1, col_f2 = st.columns([1, 2])
-    with col_f1:
-        filtro_status = st.selectbox("Filtrar por Status", ["Todos", "Em Andamento", "Resolvido"])
-    with col_f2:
-        busca = st.text_input("Buscar por Nome, SUS ou Demanda")
+    submitted = st.form_submit_button("Registar Demanda")
+    
+    if submitted:
+        if nome and demanda:
+            salvar_demandas(nome, telefone, cartao_sus, demanda, reportado, data_limite)
+            st.sidebar.success("Demanda registada com sucesso!")
+            st.rerun()
+        else:
+            st.sidebar.error("Preencha os campos obrigatórios (Nome e Demanda).")
 
-    # Aplicação dos Filtros
-    if filtro_status != "Todos":
-        df = df[df["status"] == filtro_status]
+# Carregar Dados e Apresentar no Painel
+try:
+    dados_demandas = carregar_demandas()
+    
+    if not dados_demandas:
+        st.info("Ainda não existem demandas registadas. Utilize o menu lateral para criar o primeiro atendimento.")
+    else:
+        df = pd.DataFrame(dados_demandas)
         
-    if busca:
-        mask = (
-            df["nome"].str.contains(busca, case=False, na=False) |
-            df["cartao_sus"].str.contains(busca, case=False, na=False) |
-            df["demanda"].str.contains(busca, case=False, na=False)
-        )
-        df = df[mask]
-
-    st.write(f"**Total de registos:** {len(df)}")
-
-    # Exibição dos Cards de Demandas
-    for idx, row in df.iterrows():
-        status_color = "🟢" if row["status"] == "Resolvido" else "🟡"
-        with st.expander(f"{status_color} {row['nome']} | Status: {row['status']} | Ref: {row.get('data_limite', 'S/D')}"):
-            c1, c2, c3 = st.columns([2, 2, 1])
+        # Filtros Rápidos
+        st.subheader("Filtros e Controlo")
+        col_f1, col_f2 = st.columns(2)
+        
+        with col_f1:
+            filtro_status = st.selectbox("Filtrar por Status", ["Todos", "Em Andamento", "Resolvido", "Pendente"])
+        
+        with col_f2:
+            busca_nome = st.text_input("Pesquisar por Nome ou Cartão SUS")
             
-            with c1:
-                st.write(f"**Telefone:** {row['telefone'] or 'Não informado'}")
-                if row['telefone']:
-                    tel_clean = "".join(filter(str.isdigit, str(row['telefone'])))
-                    st.markdown(f"[💬 Abrir WhatsApp](https://wa.me/55{tel_clean})")
-                st.write(f"**Cartão SUS:** {row['cartao_sus'] or 'Não informado'}")
-                st.write(f"**Reportado para:** {row['reportado'] or 'Não especificado'}")
+        df_filtrado = df.copy()
+        if filtro_status != "Todos":
+            df_filtrado = df_filtrado[df_filtrado["status"] == filtro_status]
+            
+        if busca_nome:
+            df_filtrado = df_filtrado[
+                df_filtrado["nome"].str.contains(busca_nome, case=False, na=False) | 
+                df_filtrado["cartao_sus"].str.contains(busca_nome, case=False, na=False)
+            ]
 
-            with c2:
-                st.write(f"**Demanda:** {row['demanda']}")
-                st.write(f"**Data Criada:** {row['created_at'][:10]}")
-                st.write(f"**Data Limite:** {row['data_limite']}")
-                if row['data_resolucao']:
-                    st.write(f"**Resolvido em:** {row['data_resolucao'][:10]}")
-
-            with c3:
-                st.write("**Ações:**")
-                if row['status'] == "Em Andamento":
-                    if st.button("Marcar Resolvido", key=f"res_{row['id']}"):
-                        atualizar_status(row['id'], "Resolvido")
-                        st.rerun()
-                else:
-                    if st.button("Reabrir Caso", key=f"reab_{row['id']}"):
-                        atualizar_status(row['id'], "Em Andamento")
-                        st.rerun()
+        st.markdown("---")
+        st.subheader(f"Lista de Atendimentos ({len(df_filtrado)})")
+        
+        # Mostrar cartões individuais para fácil visualização em dispositivos móveis
+        for index, row in df_filtrado.iterrows():
+            with st.expander(f"👤 {row['nome']} | Status: {row['status']} | Prazo: {row.get('data_limite', 'N/A')}"):
+                col1, col2 = st.columns([2, 1])
                 
-                if st.button("Excluir", key=f"del_{row['id']}"):
-                    deletar_demanda(row['id'])
-                    st.rerun()
+                with col1:
+                    st.write(f"**Telefone:** {row.get('telefone', 'Não informado')}")
+                    st.write(f"**Cartão SUS:** {row.get('cartao_sus', 'Não informado')}")
+                    st.write(f"**Demanda:** {row['demanda']}")
+                    st.write(f"**Reportado por:** {row.get('reportado', 'N/A')}")
+                    
+                    # Botão Direto para WhatsApp se houver telefone
+                    tel = row.get('telefone')
+                    if tel:
+                        tel_limpo = "".join(filter(str.isdigit, str(tel)))
+                        st.markdown(f"[💬 Enviar Mensagem WhatsApp](https://wa.me/55{tel_limpo})", unsafe_allow_html=True)
+
+                with col2:
+                    status_atual = row['status']
+                    novo_estado = st.selectbox(
+                        "Alterar Status", 
+                        ["Em Andamento", "Pendente", "Resolvido"], 
+                        index=["Em Andamento", "Pendente", "Resolvido"].index(status_atual) if status_atual in ["Em Andamento", "Pendente", "Resolvido"] else 0,
+                        key=f"status_{row['id']}"
+                    )
+                    
+                    if novo_estado != status_atual:
+                        atualizar_status(row['id'], novo_estado)
+                        st.success("Atualizado!")
+                        st.rerun()
+
+except Exception as e:
+    st.error(f"Erro ao carregar os dados: {e}")
