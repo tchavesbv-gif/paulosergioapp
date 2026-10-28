@@ -1,6 +1,5 @@
 import streamlit as st
-from supabase import create_client, Client
-from supabase.client import ClientOptions
+import requests
 import pandas as pd
 
 # Configuração da página
@@ -11,48 +10,50 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Inicialização Oficial do Supabase com o esquema public explícito
-@st.cache_resource
-def init_supabase() -> Client:
-    url = st.secrets["SUPABASE_URL"]
-    key = st.secrets["SUPABASE_KEY"]
-    options = ClientOptions(schema="public")
-    return create_client(url, key, options=options)
+# Configuração da API REST do Supabase
+SUPABASE_URL = st.secrets["SUPABASE_URL"].rstrip("/")
+SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
 
-supabase = init_supabase()
+HEADERS = {
+    "apikey": SUPABASE_KEY,
+    "Authorization": f"Bearer {SUPABASE_KEY}",
+    "Content-Type": "application/json",
+    "Prefer": "return=representation"
+}
 
-# Funções CRUD via RPC utilizando o cliente configurado
+# Funções CRUD via chamadas HTTP diretas aos endpoints RPC (Evita qualquer erro de caminho do cliente)
 def carregar_demandas():
     try:
-        response = supabase.rpc("api_listar_demandas").execute()
-        return response.data if response.data else []
-    except Exception as e:
-        st.error(f"Erro ao carregar dados: {e}")
+        url = f"{SUPABASE_URL}/rest/v1/rpc/api_listar_demandas"
+        response = requests.post(url, headers=HEADERS, json={}, timeout=10)
+        if response.status_code == 200:
+            return response.json()
+        return []
+    except Exception:
         return []
 
 def salvar_demandas(nome, telefone, cartao_sus, demanda, reportado):
-    try:
-        payload = {
-            "p_nome": nome,
-            "p_telefone": telefone,
-            "p_cartao_sus": cartao_sus,
-            "p_demanda": demanda,
-            "p_reportado": reportado
-        }
-        response = supabase.rpc("api_inserir_demanda", payload).execute()
-        return response
-    except Exception as e:
-        raise Exception(f"Erro na execução da RPC: {e}")
+    url = f"{SUPABASE_URL}/rest/v1/rpc/api_inserir_demanda"
+    payload = {
+        "p_nome": nome,
+        "p_telefone": telefone,
+        "p_cartao_sus": cartao_sus,
+        "p_demanda": demanda,
+        "p_reportado": reportado
+    }
+    response = requests.post(url, headers=HEADERS, json=payload, timeout=10)
+    if response.status_code not in [200, 201, 204]:
+        raise Exception(f"Erro na API Supabase ({response.status_code}): {response.text}")
 
 def atualizar_status(demanda_id, novo_status):
-    try:
-        payload = {
-            "p_id": int(demanda_id),
-            "p_status": novo_status
-        }
-        supabase.rpc("api_atualizar_status", payload).execute()
-    except Exception as e:
-        st.error(f"Erro ao atualizar status: {e}")
+    url = f"{SUPABASE_URL}/rest/v1/rpc/api_atualizar_status"
+    payload = {
+        "p_id": int(demanda_id),
+        "p_status": novo_status
+    }
+    response = requests.post(url, headers=HEADERS, json=payload, timeout=10)
+    if response.status_code not in [200, 201, 204]:
+        raise Exception(f"Erro ao atualizar: {response.text}")
 
 # Interface Principal
 st.title("🩺 Gestão de Atendimentos - Secretaria de Saúde")
