@@ -1,6 +1,7 @@
 import streamlit as st
 from supabase import create_client, Client
 import pandas as pd
+from datetime import datetime
 
 # Configuração da página
 st.set_page_config(
@@ -19,34 +20,39 @@ def init_supabase() -> Client:
 
 supabase = init_supabase()
 
-# Funções CRUD utilizando exclusivamente RPCs do Supabase
+# Funções CRUD utilizando diretamente a tabela do Supabase
 def carregar_demandas():
     try:
-        response = supabase.rpc("api_listar_demandas").execute()
+        response = supabase.table("pacientes_demandas").select("*").order("id", desc=True).execute()
         return response.data if response.data else []
     except Exception as e:
         return []
 
 def salvar_demandas(nome, telefone, cartao_sus, demanda, reportado):
     try:
-        payload = {
-            "p_nome": nome,
-            "p_telefone": telefone,
-            "p_cartao_sus": cartao_sus,
-            "p_demanda": demanda,
-            "p_reportado": reportado
+        # Define o status automaticamente com base no campo 'reportado'
+        status_inicial = "Delegado" if reportado and reportado.strip() != "" else "Em Aberto"
+        
+        dados = {
+            "nome": nome,
+            "telefone": telefone,
+            "cartao_sus": cartao_sus,
+            "demanda": demanda,
+            "reportado": reportado,
+            "status": status_inicial
         }
-        supabase.rpc("api_inserir_demanda", payload).execute()
+        response = supabase.table("pacientes_demandas").insert(dados).execute()
+        return response
     except Exception as e:
         raise Exception(f"Erro ao guardar na base de dados: {e}")
 
 def atualizar_status(demanda_id, novo_status):
     try:
-        payload = {
-            "p_id": int(demanda_id),
-            "p_status": novo_status
-        }
-        supabase.rpc("api_atualizar_status", payload).execute()
+        atualizacao = {"status": novo_status}
+        if novo_status == "Encerrado":
+            atualizacao["data_resolucao"] = datetime.now().isoformat()
+            
+        supabase.table("pacientes_demandas").update(atualizacao).eq("id", demanda_id).execute()
     except Exception as e:
         st.error(f"Erro ao atualizar status: {e}")
 
