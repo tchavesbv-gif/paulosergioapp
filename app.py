@@ -1,5 +1,6 @@
 import streamlit as st
 from supabase import create_client, Client
+from supabase.client import ClientOptions
 import pandas as pd
 
 # Configuração da página
@@ -10,16 +11,17 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Inicialização do Cliente Oficial do Supabase
+# Inicialização Oficial do Supabase com o esquema public explícito
 @st.cache_resource
 def init_supabase() -> Client:
     url = st.secrets["SUPABASE_URL"]
     key = st.secrets["SUPABASE_KEY"]
-    return create_client(url, key)
+    options = ClientOptions(schema="public")
+    return create_client(url, key, options=options)
 
 supabase = init_supabase()
 
-# Funções CRUD utilizando o método oficial .rpc() do Supabase
+# Funções CRUD via RPC utilizando o cliente configurado
 def carregar_demandas():
     try:
         response = supabase.rpc("api_listar_demandas").execute()
@@ -29,22 +31,28 @@ def carregar_demandas():
         return []
 
 def salvar_demandas(nome, telefone, cartao_sus, demanda, reportado):
-    payload = {
-        "p_nome": nome,
-        "p_telefone": telefone,
-        "p_cartao_sus": cartao_sus,
-        "p_demanda": demanda,
-        "p_reportado": reportado
-    }
-    response = supabase.rpc("api_inserir_demanda", payload).execute()
-    return response
+    try:
+        payload = {
+            "p_nome": nome,
+            "p_telefone": telefone,
+            "p_cartao_sus": cartao_sus,
+            "p_demanda": demanda,
+            "p_reportado": reportado
+        }
+        response = supabase.rpc("api_inserir_demanda", payload).execute()
+        return response
+    except Exception as e:
+        raise Exception(f"Erro na execução da RPC: {e}")
 
 def atualizar_status(demanda_id, novo_status):
-    payload = {
-        "p_id": int(demanda_id),
-        "p_status": novo_status
-    }
-    supabase.rpc("api_atualizar_status", payload).execute()
+    try:
+        payload = {
+            "p_id": int(demanda_id),
+            "p_status": novo_status
+        }
+        supabase.rpc("api_atualizar_status", payload).execute()
+    except Exception as e:
+        st.error(f"Erro ao atualizar status: {e}")
 
 # Interface Principal
 st.title("🩺 Gestão de Atendimentos - Secretaria de Saúde")
