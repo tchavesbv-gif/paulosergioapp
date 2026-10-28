@@ -20,13 +20,17 @@ def init_supabase() -> Client:
 
 supabase = init_supabase()
 
-# Funções CRUD robustas com tratamento de rotas
+# Funções CRUD robustas com rota direta via PostgREST
 def carregar_demandas():
     try:
         response = supabase.table("pacientes_demandas").select("*").order("id", desc=True).execute()
         return response.data if response.data else []
     except Exception:
-        return []
+        try:
+            response = supabase.postgrest.from_("pacientes_demandas").select("*").order("id", desc=True).execute()
+            return response.data if response.data else []
+        except Exception:
+            return []
 
 def salvar_demandas(nome, telefone, cartao_sus, demanda, reportado, data_limite):
     dados = {
@@ -38,14 +42,17 @@ def salvar_demandas(nome, telefone, cartao_sus, demanda, reportado, data_limite)
         "status": "Em Andamento",
         "data_limite": str(data_limite) if data_limite else None
     }
-    # Utiliza o método direto na tabela para inserção sem falhas de caminho
-    supabase.table("pacientes_demandas").insert(dados).execute()
+    # Inserção segura utilizando o cliente PostgREST direto para evitar conflito de caminho
+    supabase.postgrest.from_("pacientes_demandas").insert(dados).execute()
 
 def atualizar_status(demanda_id, novo_status):
     atualizacao = {"status": novo_status}
     if novo_status == "Resolvido":
         atualizacao["data_resolucao"] = datetime.now().isoformat()
-    supabase.table("pacientes_demandas").update(atualizacao).eq("id", demanda_id).execute()
+    try:
+        supabase.table("pacientes_demandas").update(atualizacao).eq("id", demanda_id).execute()
+    except Exception:
+        supabase.postgrest.from_("pacientes_demandas").update(atualizacao).eq("id", demanda_id).execute()
 
 # Interface Principal
 st.title("🩺 Gestão de Atendimentos - Secretaria de Saúde")
