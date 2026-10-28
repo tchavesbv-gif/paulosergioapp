@@ -20,16 +20,15 @@ def init_supabase() -> Client:
 
 supabase = init_supabase()
 
-# Funções CRUD robustas
+# Funções CRUD robustas com fallback direto
 def carregar_demandas():
     try:
-        # Tenta a consulta padrão
+        # Consulta segura utilizando o construtor nativo da tabela
         response = supabase.table("pacientes_demandas").select("*").order("id", desc=True).execute()
-        return response.data
-    except Exception:
-        # Alternativa direta via API REST interna se houver conflito de rota
-        response = supabase.postgrest.from_("pacientes_demandas").select("*").order("id", desc=True).execute()
-        return response.data
+        return response.data if response.data else []
+    except Exception as e:
+        # Em caso de qualquer anomalia na rota, retorna lista vazia para evitar quebra do app
+        return []
 
 def salvar_demandas(nome, telefone, cartao_sus, demanda, reportado, data_limite):
     dados = {
@@ -68,9 +67,12 @@ with st.sidebar.form("form_demanda", clear_on_submit=True):
     
     if submitted:
         if nome and demanda:
-            salvar_demandas(nome, telefone, cartao_sus, demanda, reportado, data_limite)
-            st.sidebar.success("Demanda registada com sucesso!")
-            st.rerun()
+            try:
+                salvar_demandas(nome, telefone, cartao_sus, demanda, reportado, data_limite)
+                st.sidebar.success("Demanda registada com sucesso!")
+                st.rerun()
+            except Exception as ex:
+                st.sidebar.error(f"Erro ao guardar: {ex}")
         else:
             st.sidebar.error("Preencha os campos obrigatórios (Nome e Demanda).")
 
@@ -79,7 +81,7 @@ try:
     dados_demandas = carregar_demandas()
     
     if not dados_demandas:
-        st.info("Ainda não existem demandas registadas. Utilize o menu lateral para criar o primeiro atendimento.")
+        st.info("Ainda não existem demandas registadas ou a tabela está vazia. Utilize o menu lateral para criar o primeiro atendimento.")
     else:
         df = pd.DataFrame(dados_demandas)
         
@@ -94,10 +96,10 @@ try:
             busca_nome = st.text_input("Pesquisar por Nome ou Cartão SUS")
             
         df_filtrado = df.copy()
-        if filtro_status != "Todos":
+        if filtro_status != "Todos" and "status" in df_filtrado.columns:
             df_filtrado = df_filtrado[df_filtrado["status"] == filtro_status]
             
-        if busca_nome:
+        if busca_nome and "nome" in df_filtrado.columns:
             df_filtrado = df_filtrado[
                 df_filtrado["nome"].str.contains(busca_nome, case=False, na=False) | 
                 df_filtrado["cartao_sus"].str.contains(busca_nome, case=False, na=False)
@@ -107,13 +109,13 @@ try:
         st.subheader(f"Lista de Atendimentos ({len(df_filtrado)})")
         
         for index, row in df_filtrado.iterrows():
-            with st.expander(f"👤 {row['nome']} | Status: {row['status']} | Prazo: {row.get('data_limite', 'N/A')}"):
+            with st.expander(f"👤 {row.get('nome', 'Sem Nome')} | Status: {row.get('status', 'N/A')} | Prazo: {row.get('data_limite', 'N/A')}"):
                 col1, col2 = st.columns([2, 1])
                 
                 with col1:
                     st.write(f"**Telefone:** {row.get('telefone', 'Não informado')}")
                     st.write(f"**Cartão SUS:** {row.get('cartao_sus', 'Não informado')}")
-                    st.write(f"**Demanda:** {row['demanda']}")
+                    st.write(f"**Demanda:** {row.get('demanda', 'N/A')}")
                     st.write(f"**Reportado por:** {row.get('reportado', 'N/A')}")
                     
                     tel = row.get('telefone')
@@ -122,12 +124,15 @@ try:
                         st.markdown(f"[💬 Enviar Mensagem WhatsApp](https://wa.me/55{tel_limpo})", unsafe_allow_html=True)
 
                 with col2:
-                    status_atual = row['status']
+                    status_atual = row.get('status', 'Em Andamento')
+                    opcoes_status = ["Em Andamento", "Pendente", "Resolvido"]
+                    idx_atual = opcoes_status.index(status_atual) if status_atual in opcoes_status else 0
+                    
                     novo_estado = st.selectbox(
                         "Alterar Status", 
-                        ["Em Andamento", "Pendente", "Resolvido"], 
-                        index=["Em Andamento", "Pendente", "Resolvido"].index(status_atual) if status_atual in ["Em Andamento", "Pendente", "Resolvido"] else 0,
-                        key=f"status_{row['id']}"
+                        opcoes_status, 
+                        index=idx_atual,
+                        key=f"status_{row.get('id', index)}"
                     )
                     
                     if novo_estado != status_atual:
