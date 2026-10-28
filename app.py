@@ -22,7 +22,7 @@ supabase = init_supabase()
 
 # Funções CRUD
 def carregar_demandas():
-    # Utiliza o campo 'id' para ordenação decrescente de forma segura
+    # Chamada direta à tabela no esquema predefinido
     response = supabase.table("pacientes_demandas").select("*").order("id", desc=True).execute()
     return response.data
 
@@ -101,7 +101,6 @@ try:
         st.markdown("---")
         st.subheader(f"Lista de Atendimentos ({len(df_filtrado)})")
         
-        # Mostrar cartões individuais para fácil visualização em dispositivos móveis
         for index, row in df_filtrado.iterrows():
             with st.expander(f"👤 {row['nome']} | Status: {row['status']} | Prazo: {row.get('data_limite', 'N/A')}"):
                 col1, col2 = st.columns([2, 1])
@@ -112,7 +111,6 @@ try:
                     st.write(f"**Demanda:** {row['demanda']}")
                     st.write(f"**Reportado por:** {row.get('reportado', 'N/A')}")
                     
-                    # Botão Direto para WhatsApp se houver telefone
                     tel = row.get('telefone')
                     if tel:
                         tel_limpo = "".join(filter(str.isdigit, str(tel)))
