@@ -20,14 +20,12 @@ def init_supabase() -> Client:
 
 supabase = init_supabase()
 
-# Funções CRUD robustas com fallback direto
+# Funções CRUD robustas
 def carregar_demandas():
     try:
-        # Consulta segura utilizando o construtor nativo da tabela
         response = supabase.table("pacientes_demandas").select("*").order("id", desc=True).execute()
         return response.data if response.data else []
-    except Exception as e:
-        # Em caso de qualquer anomalia na rota, retorna lista vazia para evitar quebra do app
+    except Exception:
         return []
 
 def salvar_demandas(nome, telefone, cartao_sus, demanda, reportado, data_limite):
@@ -53,7 +51,7 @@ st.title("🩺 Gestão de Atendimentos - Secretaria de Saúde")
 st.markdown("---")
 
 # Barra Lateral para Registo de Nova Demanda
-st.sidebar.header("Novo Atendimento")
+st.sidebar.header("📝 Novo Atendimento")
 
 with st.sidebar.form("form_demanda", clear_on_submit=True):
     nome = st.text_input("Nome do Paciente *")
@@ -63,7 +61,7 @@ with st.sidebar.form("form_demanda", clear_on_submit=True):
     reportado = st.text_input("Reportado por / Origem")
     data_limite = st.date_input("Data Limite / Prazo", value=date.today())
     
-    submitted = st.form_submit_button("Registar Demanda")
+    submitted = st.form_submit_button("Registar Demanda", use_container_width=True)
     
     if submitted:
         if nome and demanda:
@@ -81,19 +79,33 @@ try:
     dados_demandas = carregar_demandas()
     
     if not dados_demandas:
-        st.info("Ainda não existem demandas registadas ou a tabela está vazia. Utilize o menu lateral para criar o primeiro atendimento.")
+        st.info("Ainda não existem demandas registadas. Utilize o menu lateral para criar o primeiro atendimento.")
     else:
         df = pd.DataFrame(dados_demandas)
         
-        # Filtros Rápidos
-        st.subheader("Filtros e Controlo")
+        # --- Secção de Métricas (KPIs) ---
+        total_atendimentos = len(df)
+        em_andamento = len(df[df["status"] == "Em Andamento"]) if "status" in df.columns else 0
+        pendentes = len(df[df["status"] == "Pendente"]) if "status" in df.columns else 0
+        resolvidos = len(df[df["status"] == "Resolvido"]) if "status" in df.columns else 0
+        
+        kpi1, kpi2, kpi3, kpi4 = st.columns(4)
+        kpi1.metric("Total de Atendimentos", total_atendimentos)
+        kpi2.metric("Em Andamento", em_andamento)
+        kpi3.metric("Pendentes", pendentes)
+        kpi4.metric("Resolvidos", resolvidos)
+        
+        st.markdown("---")
+        
+        # --- Filtros e Controlo ---
+        st.subheader("🔍 Filtros e Pesquisa")
         col_f1, col_f2 = st.columns(2)
         
         with col_f1:
-            filtro_status = st.selectbox("Filtrar por Status", ["Todos", "Em Andamento", "Resolvido", "Pendente"])
+            filtro_status = st.selectbox("Filtrar por Status", ["Todos", "Em Andamento", "Pendente", "Resolvido"])
         
         with col_f2:
-            busca_nome = st.text_input("Pesquisar por Nome ou Cartão SUS")
+            busca_nome = st.text_input("Pesquisar por Nome ou Cartão SUS", placeholder="Digite o nome ou cartão...")
             
         df_filtrado = df.copy()
         if filtro_status != "Todos" and "status" in df_filtrado.columns:
@@ -106,17 +118,22 @@ try:
             ]
 
         st.markdown("---")
-        st.subheader(f"Lista de Atendimentos ({len(df_filtrado)})")
+        st.subheader(f"📋 Lista de Atendimentos ({len(df_filtrado)})")
         
         for index, row in df_filtrado.iterrows():
-            with st.expander(f"👤 {row.get('nome', 'Sem Nome')} | Status: {row.get('status', 'N/A')} | Prazo: {row.get('data_limite', 'N/A')}"):
+            status_atual = row.get('status', 'Em Andamento')
+            
+            # Indicador visual por emoji dependendo do estado
+            emoji_status = "🟡" if status_atual == "Em Andamento" else ("🟠" if status_atual == "Pendente" else "🟢")
+            
+            with st.expander(f"{emoji_status} **{row.get('nome', 'Sem Nome')}** — Status: **{status_atual}** | Prazo: {row.get('data_limite', 'N/A')}"):
                 col1, col2 = st.columns([2, 1])
                 
                 with col1:
-                    st.write(f"**Telefone:** {row.get('telefone', 'Não informado')}")
-                    st.write(f"**Cartão SUS:** {row.get('cartao_sus', 'Não informado')}")
-                    st.write(f"**Demanda:** {row.get('demanda', 'N/A')}")
-                    st.write(f"**Reportado por:** {row.get('reportado', 'N/A')}")
+                    st.markdown(f"**📞 Telefone:** {row.get('telefone', 'Não informado')}")
+                    st.markdown(f"**🆔 Cartão SUS:** {row.get('cartao_sus', 'Não informado')}")
+                    st.markdown(f"**📝 Demanda:** {row['demanda']}")
+                    st.markdown(f"**👤 Reportado por:** {row.get('reportado', 'N/A')}")
                     
                     tel = row.get('telefone')
                     if tel:
@@ -124,12 +141,11 @@ try:
                         st.markdown(f"[💬 Enviar Mensagem WhatsApp](https://wa.me/55{tel_limpo})", unsafe_allow_html=True)
 
                 with col2:
-                    status_atual = row.get('status', 'Em Andamento')
                     opcoes_status = ["Em Andamento", "Pendente", "Resolvido"]
                     idx_atual = opcoes_status.index(status_atual) if status_atual in opcoes_status else 0
                     
                     novo_estado = st.selectbox(
-                        "Alterar Status", 
+                        "Atualizar Status", 
                         opcoes_status, 
                         index=idx_atual,
                         key=f"status_{row.get('id', index)}"
@@ -137,7 +153,7 @@ try:
                     
                     if novo_estado != status_atual:
                         atualizar_status(row['id'], novo_estado)
-                        st.success("Atualizado!")
+                        st.success("Estado atualizado com sucesso!")
                         st.rerun()
 
 except Exception as e:
