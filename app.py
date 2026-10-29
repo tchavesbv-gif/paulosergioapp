@@ -13,10 +13,9 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# Estilização CSS para evitar quebras de linha no título e otimizar mobile
+# Estilização CSS Avançada para Cartões Clicáveis e Responsivos
 st.markdown("""
     <style>
-        /* Título responsivo e compacto para telemóveis */
         .main-title {
             font-size: 1.3rem !important;
             font-weight: bold;
@@ -33,35 +32,23 @@ st.markdown("""
             margin-bottom: 10px;
         }
         
-        /* Estilo dos Cartões de Métricas (KPIs) */
-        .metric-card {
-            background-color: #ffffff;
-            border-radius: 10px;
-            padding: 8px;
-            text-align: center;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-            border-left: 4px solid #2196F3;
-            margin-bottom: 6px;
-        }
-        .metric-card.total { border-left-color: #2196F3; background-color: #E3F2FD; }
-        .metric-card.aberto { border-left-color: #FFC107; background-color: #FFF8E1; }
-        .metric-card.delegado { border-left-color: #9C27B0; background-color: #F3E5F5; }
-        .metric-card.encerrado { border-left-color: #4CAF50; background-color: #E8F5E9; }
-
-        .metric-card h4 {
-            margin: 0;
-            font-size: 0.7rem;
-            color: #555;
-            text-transform: uppercase;
-        }
-        .metric-card h2 {
-            margin: 2px 0 0 0;
-            font-size: 1.2rem;
+        /* Botões de métricas interativos */
+        .stButton button {
+            width: 100%;
+            border-radius: 8px;
             font-weight: bold;
-            color: #222;
+            border: none;
+        }
+        
+        /* Estilização específica para os botões de filtro rápido */
+        div[data-testid="column"] button {
+            padding: 8px 4px;
+            height: auto;
+            min-height: 55px;
+            font-size: 0.75rem;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
         }
 
-        /* Botão do WhatsApp */
         .wsp-button {
             display: block;
             width: 100%;
@@ -73,16 +60,6 @@ st.markdown("""
             font-weight: bold;
             text-decoration: none;
             margin-top: 8px;
-        }
-
-        .stButton button {
-            width: 100%;
-            border-radius: 8px;
-            height: 2.8em;
-            font-weight: bold;
-            background-color: #1E88E5;
-            color: white;
-            border: none;
         }
 
         div.stExpander {
@@ -105,18 +82,17 @@ def init_supabase() -> Client:
 
 supabase = init_supabase()
 
-# Função para comprimir imagem antes de enviar (economiza espaço no Supabase)
+# Gestão do Estado de Filtro Ativo via Cliques nos Cartões
+if "filtro_ativo" not in st.session_state:
+    st.session_state.filtro_ativo = "Todos"
+
+# Função para comprimir imagem antes de enviar
 def comprimir_imagem(uploaded_file):
     try:
         image = Image.open(uploaded_file)
-        # Converter para RGB caso esteja em RGBA (PNG com transparência)
         if image.mode in ("RGBA", "P"):
             image = image.convert("RGB")
-        
-        # Redimensionar mantendo a proporção (máximo 800px de largura/altura)
         image.thumbnail((800, 800))
-        
-        # Guardar em buffer com compressão JPEG (qualidade 60 para otimizar espaço)
         buffer = io.BytesIO()
         image.save(buffer, format="JPEG", quality=60, optimize=True)
         return buffer.getvalue()
@@ -134,7 +110,6 @@ def carregar_demandas():
 def salvar_demandas(nome, telefone, cartao_sus, demanda, reportado, prioridade, data_previsao):
     try:
         status_inicial = "Delegado" if reportado and reportado.strip() != "" else "Em Aberto"
-        
         dados = {
             "nome": nome,
             "telefone": telefone,
@@ -165,7 +140,7 @@ st.markdown('<p class="sub-title">Secretaria Municipal de Saúde</p>', unsafe_al
 dados_demandas = carregar_demandas()
 df = pd.DataFrame(dados_demandas) if dados_demandas else pd.DataFrame()
 
-# --- CARDS DE MÉTRICAS ---
+# --- CARDS DE MÉTRICAS CLICÁVEIS (RESPONSIVOS) ---
 if not df.empty:
     total = len(df)
     aberto = len(df[df["status"] == "Em Aberto"]) if "status" in df.columns else 0
@@ -173,14 +148,23 @@ if not df.empty:
     encerrado = len(df[df["status"] == "Encerrado"]) if "status" in df.columns else 0
     
     k1, k2, k3, k4 = st.columns(4)
+    
     with k1:
-        st.markdown(f'<div class="metric-card total"><h4>Total</h4><h2>{total}</h2></div>', unsafe_allow_html=True)
+        if st.button(f"📊 Total\n\n{total}", key="btn_tot"):
+            st.session_state.filtro_ativo = "Todos"
+            st.rerun()
     with k2:
-        st.markdown(f'<div class="metric-card aberto"><h4>Aberto</h4><h2>{aberto}</h2></div>', unsafe_allow_html=True)
+        if st.button(f"🟡 Aberto\n\n{aberto}", key="btn_ab"):
+            st.session_state.filtro_ativo = "Em Aberto"
+            st.rerun()
     with k3:
-        st.markdown(f'<div class="metric-card delegado"><h4>Deleg.</h4><h2>{delegado}</h2></div>', unsafe_allow_html=True)
+        if st.button(f"🟣 Deleg.\n\n{delegado}", key="btn_del"):
+            st.session_state.filtro_ativo = "Delegado"
+            st.rerun()
     with k4:
-        st.markdown(f'<div class="metric-card encerrado"><h4>Encerr.</h4><h2>{encerrado}</h2></div>', unsafe_allow_html=True)
+        if st.button(f"🟢 Encerr.\n\n{encerrado}", key="btn_enc"):
+            st.session_state.filtro_ativo = "Encerrado"
+            st.rerun()
 
 st.markdown("<br>", unsafe_allow_html=True)
 
@@ -199,8 +183,6 @@ with st.expander("➕ **Registar Novo Atendimento**", expanded=False):
             
         demanda = st.text_area("📝 Descrição do Caso / Demanda *")
         reportado = st.text_input("🏛️ Reportado por / Origem (Vazio = 'Em Aberto')")
-        
-        # Campo de Anexo Otimizado para Compressão
         anexo = st.file_uploader("📎 Anexar Foto / Documento (Comprimido Auto)", type=["png", "jpg", "jpeg"])
         
         submitted = st.form_submit_button("💾 Guardar Atendimento", use_container_width=True)
@@ -208,11 +190,8 @@ with st.expander("➕ **Registar Novo Atendimento**", expanded=False):
         if submitted:
             if nome and demanda:
                 try:
-                    # Se houver anexo, comprimimos (poderá guardar numa coluna binária ou bucket futuramente)
                     if anexo:
                         img_comprimida = comprimir_imagem(anexo)
-                        # Nota: O ficheiro foi comprimido com sucesso para economizar espaço
-                    
                     salvar_demandas(nome, telefone, cartao_sus, demanda, reportado, prioridade, data_previsao)
                     st.success("✅ Atendimento registado com sucesso!")
                     st.rerun()
@@ -224,14 +203,22 @@ with st.expander("➕ **Registar Novo Atendimento**", expanded=False):
 # --- FILTROS E LISTA ---
 if not df.empty:
     col_f1, col_f2 = st.columns(2)
+    
     with col_f1:
-        filtro_status = st.selectbox("Status", ["Todos", "Em Aberto", "Delegado", "Encerrado"], label_visibility="collapsed")
+        opcoes_filtro = ["Todos", "Em Aberto", "Delegado", "Encerrado"]
+        idx_selecionado = opcoes_filtro.index(st.session_state.filtro_ativo) if st.session_state.filtro_ativo in opcoes_filtro else 0
+        
+        # Sincroniza o selectbox com o cartão clicado
+        filtro_status = st.selectbox("Status", opcoes_filtro, index=idx_selecionado, label_visibility="collapsed")
+        if filtro_status != st.session_state.filtro_ativo:
+            st.session_state.filtro_ativo = filtro_status
+            
     with col_f2:
         busca = st.text_input("Pesquisar", placeholder="🔍 Nome ou SUS...", label_visibility="collapsed")
         
     df_filtrado = df.copy()
-    if filtro_status != "Todos" and "status" in df_filtrado.columns:
-        df_filtrado = df_filtrado[df_filtrado["status"] == filtro_status]
+    if st.session_state.filtro_ativo != "Todos" and "status" in df_filtrado.columns:
+        df_filtrado = df_filtrado[df_filtrado["status"] == st.session_state.filtro_ativo]
         
     if busca and "nome" in df_filtrado.columns:
         df_filtrado = df_filtrado[
@@ -239,17 +226,14 @@ if not df.empty:
             df_filtrado["cartao_sus"].str.contains(busca, case=False, na=False)
         ]
 
-    st.markdown(f"### 📋 Atendimentos ({len(df_filtrado)})")
+    st.markdown(f"### 📋 Atendimentos ({len(df_filtrado)}) — *Filtro: {st.session_state.filtro_ativo}*")
 
     for index, row in df_filtrado.iterrows():
         status_atual = row.get('status', 'Em Aberto')
         prioridade_atual = row.get('prioridade', 'Normal')
         previsao = row.get('data_previsao', 'N/A')
         
-        # Emojis de prioridade
         prio_emoji = "🟢" if prioridade_atual == "Normal" else ("🟡" if prioridade_atual == "Média" else ("🟠" if prioridade_atual == "Alta" else "🔴"))
-        
-        # Emojis de status
         status_emoji = "🟡" if status_atual == "Em Aberto" else ("🟣" if status_atual == "Delegado" else "🟢")
         
         titulo_card = f"{status_emoji} {prio_emoji} **{row.get('nome', 'Sem Nome')}**"
