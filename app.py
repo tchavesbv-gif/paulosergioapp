@@ -13,7 +13,7 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# Estilização CSS Avançada para Cartões Clicáveis e Responsivos
+# Estilização CSS com Cartões de Métricas Maiores e Destacados
 st.markdown("""
     <style>
         .main-title {
@@ -32,22 +32,25 @@ st.markdown("""
             margin-bottom: 10px;
         }
         
-        /* Botões de métricas interativos */
-        .stButton button {
-            width: 100%;
-            border-radius: 8px;
-            font-weight: bold;
-            border: none;
-        }
-        
-        /* Estilização específica para os botões de filtro rápido */
+        /* Estilização robusta e destacada para os cartões clicáveis do topo */
         div[data-testid="column"] button {
-            padding: 8px 4px;
+            width: 100%;
+            border-radius: 12px;
+            padding: 12px 6px;
             height: auto;
-            min-height: 55px;
-            font-size: 0.75rem;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            min-height: 75px;
+            font-size: 0.85rem;
+            font-weight: bold;
+            box-shadow: 0 3px 6px rgba(0,0,0,0.08);
+            border: 2px solid rgba(0,0,0,0.05);
+            transition: all 0.2s ease;
         }
+
+        /* Cores de destaque individuais para os botões do topo */
+        div[data-testid="column"]:nth-of-type(1) button { background-color: #E3F2FD; color: #0D47A1; border-color: #90CAF9; }
+        div[data-testid="column"]:nth-of-type(2) button { background-color: #FFF8E1; color: #F57F17; border-color: #FFE082; }
+        div[data-testid="column"]:nth-of-type(3) button { background-color: #F3E5F5; color: #4A148C; border-color: #CE93D8; }
+        div[data-testid="column"]:nth-of-type(4) button { background-color: #E8F5E9; color: #1B5E20; border-color: #A5D6A7; }
 
         .wsp-button {
             display: block;
@@ -60,6 +63,11 @@ st.markdown("""
             font-weight: bold;
             text-decoration: none;
             margin-top: 8px;
+        }
+
+        .stButton button {
+            border-radius: 8px;
+            font-weight: bold;
         }
 
         div.stExpander {
@@ -82,11 +90,9 @@ def init_supabase() -> Client:
 
 supabase = init_supabase()
 
-# Gestão do Estado de Filtro Ativo via Cliques nos Cartões
 if "filtro_ativo" not in st.session_state:
     st.session_state.filtro_ativo = "Todos"
 
-# Função para comprimir imagem antes de enviar
 def comprimir_imagem(uploaded_file):
     try:
         image = Image.open(uploaded_file)
@@ -99,7 +105,6 @@ def comprimir_imagem(uploaded_file):
     except Exception:
         return None
 
-# Funções CRUD
 def carregar_demandas():
     try:
         response = supabase.table("pacientes_demandas").select("*").order("id", desc=True).execute()
@@ -140,7 +145,7 @@ st.markdown('<p class="sub-title">Secretaria Municipal de Saúde</p>', unsafe_al
 dados_demandas = carregar_demandas()
 df = pd.DataFrame(dados_demandas) if dados_demandas else pd.DataFrame()
 
-# --- CARDS DE MÉTRICAS CLICÁVEIS (RESPONSIVOS) ---
+# --- CARDS DE MÉTRICAS MAIORES E MAIS DESTACADOS ---
 if not df.empty:
     total = len(df)
     aberto = len(df[df["status"] == "Em Aberto"]) if "status" in df.columns else 0
@@ -208,7 +213,6 @@ if not df.empty:
         opcoes_filtro = ["Todos", "Em Aberto", "Delegado", "Encerrado"]
         idx_selecionado = opcoes_filtro.index(st.session_state.filtro_ativo) if st.session_state.filtro_ativo in opcoes_filtro else 0
         
-        # Sincroniza o selectbox com o cartão clicado
         filtro_status = st.selectbox("Status", opcoes_filtro, index=idx_selecionado, label_visibility="collapsed")
         if filtro_status != st.session_state.filtro_ativo:
             st.session_state.filtro_ativo = filtro_status
