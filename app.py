@@ -17,32 +17,28 @@ st.set_page_config(
 st.markdown("""
     <style>
         .main-title {
-            font-size: 1.3rem !important;
+            font-size: 1.2rem !important;
             font-weight: bold;
             color: #1E3A8A;
             margin-bottom: 0px;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
         }
         .sub-title {
             color: #666; 
-            font-size: 0.8rem; 
-            margin-top: -5px;
-            margin-bottom: 15px;
+            font-size: 0.75rem; 
+            margin-top: -3px;
+            margin-bottom: 10px;
         }
         
         div[data-testid="column"] button {
             width: 100%;
             border-radius: 12px;
-            padding: 12px 6px;
+            padding: 10px 4px;
             height: auto;
-            min-height: 75px;
-            font-size: 0.85rem;
+            min-height: 70px;
+            font-size: 0.8rem;
             font-weight: bold;
             box-shadow: 0 3px 6px rgba(0,0,0,0.08);
             border: 2px solid rgba(0,0,0,0.05);
-            transition: all 0.2s ease;
         }
 
         div[data-testid="column"]:nth-of-type(1) button { background-color: #E3F2FD; color: #0D47A1; border-color: #90CAF9; }
@@ -77,9 +73,13 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# Gestão de Estado de Autenticação
+# Gestão de Estado de Autenticação e Senha
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
+if "deve_trocar_senha" not in st.session_state:
+    st.session_state.deve_trocar_senha = False
+if "senha_atual_sistema" not in st.session_state:
+    st.session_state.senha_atual_sistema = st.secrets.get("ADMIN_PASSWORD", "saude2026")
 
 # --- ECRÃ DE LOGIN ---
 if not st.session_state.logged_in:
@@ -92,19 +92,41 @@ if not st.session_state.logged_in:
         btn_login = st.form_submit_button("Entrar no Sistema", use_container_width=True)
         
         if btn_login:
-            # Credenciais definidas nos Secrets do Streamlit ou valores padrão de segurança
             user_correto = st.secrets.get("ADMIN_USER", "admin")
-            senha_correta = st.secrets.get("ADMIN_PASSWORD", "saude2026")
             
-            if usuario == user_correto and senha == senha_correta:
+            if usuario == user_correto and senha == st.session_state.senha_atual_sistema:
                 st.session_state.logged_in = True
+                st.session_state.deve_trocar_senha = True # Ativa a exigência de troca imediata
                 st.success("✅ Login efetuado com sucesso!")
                 st.rerun()
             else:
                 st.error("❌ Utilizador ou palavra-passe incorretos.")
-    st.stop() # Impede que o resto da aplicação seja executado sem login
+    st.stop()
 
-# --- INICIALIZAÇÃO DO SUPABASE (Apenas após autenticação) ---
+# --- ECRÃ DE ALTERAÇÃO OBRIGATÓRIA DE SENHA ---
+if st.session_state.logged_in and st.session_state.deve_trocar_senha:
+    st.markdown('<p class="main-title">🔐 Alteração de Palavra-passe</p>', unsafe_allow_html=True)
+    st.markdown('<p class="sub-title">Por motivos de segurança, defina uma nova palavra-passe para continuar.</p>', unsafe_allow_html=True)
+    
+    with st.form("form_troca_senha"):
+        nova_senha = st.text_input("Nova Palavra-passe", type="password")
+        confirma_senha = st.text_input("Confirmar Nova Palavra-passe", type="password")
+        btn_atualizar = st.form_submit_button("Atualizar e Entrar no Sistema", use_container_width=True)
+        
+        if btn_atualizar:
+            if nova_senha and nova_senha == confirma_senha:
+                if len(nova_senha) >= 4:
+                    st.session_state.senha_atual_sistema = nova_senha
+                    st.session_state.deve_trocar_senha = False
+                    st.success("✅ Palavra-passe alterada com sucesso!")
+                    st.rerun()
+                else:
+                    st.error("⚠️ A palavra-passe deve ter pelo menos 4 caracteres.")
+            else:
+                st.error("⚠️ As palavras-passe não coincidem ou estão vazias.")
+    st.stop()
+
+# --- INICIALIZAÇÃO DO SUPABASE ---
 @st.cache_resource
 def init_supabase() -> Client:
     url = st.secrets["SUPABASE_URL"].rstrip("/")
@@ -163,9 +185,17 @@ def atualizar_status(demanda_id, novo_status):
     except Exception as e:
         st.error(f"Erro ao atualizar: {e}")
 
-# --- CABEÇALHO DO SISTEMA ---
-st.markdown('<p class="main-title">🩺 Gestão de Atendimentos</p>', unsafe_allow_html=True)
-st.markdown('<p class="sub-title">Secretaria Municipal de Saúde</p>', unsafe_allow_html=True)
+# --- CABEÇALHO DO SISTEMA COM BOTÃO DE SAIR NO TOPO ---
+col_head1, col_head2 = st.columns([3, 1])
+with col_head1:
+    st.markdown('<p class="main-title">🩺 Gestão de Atendimentos</p>', unsafe_allow_html=True)
+    st.markdown('<p class="sub-title">Secretaria Municipal de Saúde</p>', unsafe_allow_html=True)
+with col_head2:
+    st.markdown("<div style='margin-top: 2px;'></div>", unsafe_allow_html=True)
+    if st.button("🚪 Sair", use_container_width=True):
+        st.session_state.logged_in = False
+        st.session_state.deve_trocar_senha = False
+        st.rerun()
 
 dados_demandas = carregar_demandas()
 df = pd.DataFrame(dados_demandas) if dados_demandas else pd.DataFrame()
@@ -298,9 +328,3 @@ if not df.empty:
                 st.rerun()
 else:
     st.info("ℹ️ Sem demandas registadas. Utilize o botão acima para começar.")
-
-# --- BOTÃO DE TERMINAR SESSÃO NO RODAPÉ ---
-st.markdown("<br><br>", unsafe_allow_html=True)
-if st.button("🚪 Terminar Sessão", use_container_width=True):
-    st.session_state.logged_in = False
-    st.rerun()
