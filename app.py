@@ -73,11 +73,14 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# Gestão de Estado de Autenticação e Senha
+# Gestão de Estado de Autenticação e Credenciais Dinâmicas
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
-if "deve_trocar_senha" not in st.session_state:
-    st.session_state.deve_trocar_senha = False
+if "deve_trocar_credenciais" not in st.session_state:
+    st.session_state.deve_trocar_credenciais = False
+
+if "usuario_atual_sistema" not in st.session_state:
+    st.session_state.usuario_atual_sistema = st.secrets.get("ADMIN_USER", "admin")
 if "senha_atual_sistema" not in st.session_state:
     st.session_state.senha_atual_sistema = st.secrets.get("ADMIN_PASSWORD", "saude2026")
 
@@ -92,38 +95,38 @@ if not st.session_state.logged_in:
         btn_login = st.form_submit_button("Entrar no Sistema", use_container_width=True)
         
         if btn_login:
-            user_correto = st.secrets.get("ADMIN_USER", "admin")
-            
-            if usuario == user_correto and senha == st.session_state.senha_atual_sistema:
+            if usuario == st.session_state.usuario_atual_sistema and senha == st.session_state.senha_atual_sistema:
                 st.session_state.logged_in = True
-                st.session_state.deve_trocar_senha = True # Ativa a exigência de troca imediata
+                st.session_state.deve_trocar_credenciais = True
                 st.success("✅ Login efetuado com sucesso!")
                 st.rerun()
             else:
                 st.error("❌ Utilizador ou palavra-passe incorretos.")
     st.stop()
 
-# --- ECRÃ DE ALTERAÇÃO OBRIGATÓRIA DE SENHA ---
-if st.session_state.logged_in and st.session_state.deve_trocar_senha:
-    st.markdown('<p class="main-title">🔐 Alteração de Palavra-passe</p>', unsafe_allow_html=True)
-    st.markdown('<p class="sub-title">Por motivos de segurança, defina uma nova palavra-passe para continuar.</p>', unsafe_allow_html=True)
+# --- ECRÃ DE ALTERAÇÃO OBRIGATÓRIA DE CREDENCIAIS (LOGIN E SENHA) ---
+if st.session_state.logged_in and st.session_state.deve_trocar_credenciais:
+    st.markdown('<p class="main-title">🔐 Alteração de Credenciais</p>', unsafe_allow_html=True)
+    st.markdown('<p class="sub-title">Por motivos de segurança, defina um novo utilizador e uma nova palavra-passe.</p>', unsafe_allow_html=True)
     
-    with st.form("form_troca_senha"):
+    with st.form("form_troca_credenciais"):
+        novo_usuario = st.text_input("Novo Nome de Utilizador", value=st.session_state.usuario_atual_sistema)
         nova_senha = st.text_input("Nova Palavra-passe", type="password")
         confirma_senha = st.text_input("Confirmar Nova Palavra-passe", type="password")
         btn_atualizar = st.form_submit_button("Atualizar e Entrar no Sistema", use_container_width=True)
         
         if btn_atualizar:
-            if nova_senha and nova_senha == confirma_senha:
+            if novo_usuario and nova_senha and nova_senha == confirma_senha:
                 if len(nova_senha) >= 4:
+                    st.session_state.usuario_atual_sistema = novo_usuario.strip()
                     st.session_state.senha_atual_sistema = nova_senha
-                    st.session_state.deve_trocar_senha = False
-                    st.success("✅ Palavra-passe alterada com sucesso!")
+                    st.session_state.deve_trocar_credenciais = False
+                    st.success("✅ Credenciais atualizadas com sucesso!")
                     st.rerun()
                 else:
                     st.error("⚠️ A palavra-passe deve ter pelo menos 4 caracteres.")
             else:
-                st.error("⚠️ As palavras-passe não coincidem ou estão vazias.")
+                st.error("⚠️ Preencha todos os campos e certifique-se de que as palavras-passe coincidem.")
     st.stop()
 
 # --- INICIALIZAÇÃO DO SUPABASE ---
@@ -194,7 +197,7 @@ with col_head2:
     st.markdown("<div style='margin-top: 2px;'></div>", unsafe_allow_html=True)
     if st.button("🚪 Sair", use_container_width=True):
         st.session_state.logged_in = False
-        st.session_state.deve_trocar_senha = False
+        st.session_state.deve_trocar_credenciais = False
         st.rerun()
 
 dados_demandas = carregar_demandas()
