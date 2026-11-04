@@ -13,7 +13,7 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# Estilização CSS com Cartões de Métricas Maiores e Destacados
+# Estilização CSS Avançada
 st.markdown("""
     <style>
         .main-title {
@@ -29,10 +29,9 @@ st.markdown("""
             color: #666; 
             font-size: 0.8rem; 
             margin-top: -5px;
-            margin-bottom: 10px;
+            margin-bottom: 15px;
         }
         
-        /* Estilização robusta e destacada para os cartões clicáveis do topo */
         div[data-testid="column"] button {
             width: 100%;
             border-radius: 12px;
@@ -46,7 +45,6 @@ st.markdown("""
             transition: all 0.2s ease;
         }
 
-        /* Cores de destaque individuais para os botões do topo */
         div[data-testid="column"]:nth-of-type(1) button { background-color: #E3F2FD; color: #0D47A1; border-color: #90CAF9; }
         div[data-testid="column"]:nth-of-type(2) button { background-color: #FFF8E1; color: #F57F17; border-color: #FFE082; }
         div[data-testid="column"]:nth-of-type(3) button { background-color: #F3E5F5; color: #4A148C; border-color: #CE93D8; }
@@ -79,7 +77,34 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# Inicialização Oficial do Supabase
+# Gestão de Estado de Autenticação
+if "logged_in" not in st.session_state:
+    st.session_state.logged_in = False
+
+# --- ECRÃ DE LOGIN ---
+if not st.session_state.logged_in:
+    st.markdown('<p class="main-title">🩺 Gestão de Atendimentos</p>', unsafe_allow_html=True)
+    st.markdown('<p class="sub-title">Acesso Restrito — Secretaria Municipal de Saúde</p>', unsafe_allow_html=True)
+    
+    with st.form("login_form"):
+        usuario = st.text_input("👤 Utilizador")
+        senha = st.text_input("🔑 Palavra-passe", type="password")
+        btn_login = st.form_submit_button("Entrar no Sistema", use_container_width=True)
+        
+        if btn_login:
+            # Credenciais definidas nos Secrets do Streamlit ou valores padrão de segurança
+            user_correto = st.secrets.get("ADMIN_USER", "admin")
+            senha_correta = st.secrets.get("ADMIN_PASSWORD", "saude2026")
+            
+            if usuario == user_correto and senha == senha_correta:
+                st.session_state.logged_in = True
+                st.success("✅ Login efetuado com sucesso!")
+                st.rerun()
+            else:
+                st.error("❌ Utilizador ou palavra-passe incorretos.")
+    st.stop() # Impede que o resto da aplicação seja executado sem login
+
+# --- INICIALIZAÇÃO DO SUPABASE (Apenas após autenticação) ---
 @st.cache_resource
 def init_supabase() -> Client:
     url = st.secrets["SUPABASE_URL"].rstrip("/")
@@ -138,14 +163,14 @@ def atualizar_status(demanda_id, novo_status):
     except Exception as e:
         st.error(f"Erro ao atualizar: {e}")
 
-# --- CABEÇALHO COMPACTO MOBILE ---
+# --- CABEÇALHO DO SISTEMA ---
 st.markdown('<p class="main-title">🩺 Gestão de Atendimentos</p>', unsafe_allow_html=True)
 st.markdown('<p class="sub-title">Secretaria Municipal de Saúde</p>', unsafe_allow_html=True)
 
 dados_demandas = carregar_demandas()
 df = pd.DataFrame(dados_demandas) if dados_demandas else pd.DataFrame()
 
-# --- CARDS DE MÉTRICAS MAIORES E MAIS DESTACADOS ---
+# --- CARDS DE MÉTRICAS CLICÁVEIS ---
 if not df.empty:
     total = len(df)
     aberto = len(df[df["status"] == "Em Aberto"]) if "status" in df.columns else 0
@@ -273,3 +298,9 @@ if not df.empty:
                 st.rerun()
 else:
     st.info("ℹ️ Sem demandas registadas. Utilize o botão acima para começar.")
+
+# --- BOTÃO DE TERMINAR SESSÃO NO RODAPÉ ---
+st.markdown("<br><br>", unsafe_allow_html=True)
+if st.button("🚪 Terminar Sessão", use_container_width=True):
+    st.session_state.logged_in = False
+    st.rerun()
